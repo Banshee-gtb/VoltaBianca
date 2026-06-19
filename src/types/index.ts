@@ -22,8 +22,10 @@ export interface Product {
   has_variants: boolean;
   is_active: boolean;
   main_image_url: string | null;
+  images: string[] | null;          // additional gallery images
   category_id: string | null;
   tags: string[];
+  shipping_fee: number | null;
   created_at: string;
   categories?: Category;
   product_variants?: ProductVariant[];

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Trash2, Upload, Loader2, ImageIcon } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, Plus, Trash2, Upload, Loader2, ImageIcon, X, GripVertical } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import type { Category, ProductVariant } from "@/types";
@@ -25,14 +25,21 @@ export default function ProductForm() {
   const [categoryId, setCategoryId] = useState("");
   const [tags, setTags] = useState("");
   const [basePrice, setBasePrice] = useState("");
+  const [shippingFee, setShippingFee] = useState("0");
   const [hasVariants, setHasVariants] = useState(false);
   const [isActive, setIsActive] = useState(true);
   const [variants, setVariants] = useState<VariantDraft[]>([
     { color: "", size: "", price: "", stock: "0" },
   ]);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
+
+  // Image state
+  const [mainImageFile, setMainImageFile] = useState<File | null>(null);
+  const [mainImagePreview, setMainImagePreview] = useState<string | null>(null);
+  const [currentMainImageUrl, setCurrentMainImageUrl] = useState<string | null>(null);
+  const [galleryFiles, setGalleryFiles] = useState<File[]>([]);
+  const [galleryPreviews, setGalleryPreviews] = useState<string[]>([]);
+  const [currentGalleryUrls, setCurrentGalleryUrls] = useState<string[]>([]);
+
   const [submitting, setSubmitting] = useState(false);
 
   const { data: categories = [] } = useQuery({
@@ -58,9 +65,11 @@ export default function ProductForm() {
         setCategoryId(data.category_id ?? "");
         setTags((data.tags ?? []).join(", "));
         setBasePrice(data.base_price?.toString() ?? "");
+        setShippingFee(data.shipping_fee?.toString() ?? "0");
         setHasVariants(data.has_variants);
         setIsActive(data.is_active);
-        setCurrentImageUrl(data.main_image_url);
+        setCurrentMainImageUrl(data.main_image_url);
+        setCurrentGalleryUrls(data.images ?? []);
         if (data.product_variants?.length) {
           setVariants(
             data.product_variants.map((v: ProductVariant) => ({
@@ -77,11 +86,29 @@ export default function ProductForm() {
     },
   });
 
-  function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleMainImageChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    setImageFile(file);
-    setImagePreview(URL.createObjectURL(file));
+    setMainImageFile(file);
+    setMainImagePreview(URL.createObjectURL(file));
+  }
+
+  function handleGalleryChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    const newFiles = [...galleryFiles, ...files].slice(0, 6); // max 6 gallery images
+    setGalleryFiles(newFiles);
+    setGalleryPreviews(newFiles.map((f) => URL.createObjectURL(f)));
+  }
+
+  function removeGalleryImage(index: number) {
+    const newFiles = galleryFiles.filter((_, i) => i !== index);
+    setGalleryFiles(newFiles);
+    setGalleryPreviews(newFiles.map((f) => URL.createObjectURL(f)));
+  }
+
+  function removeCurrentGalleryUrl(index: number) {
+    setCurrentGalleryUrls((prev) => prev.filter((_, i) => i !== index));
   }
 
   function addVariant() {
@@ -96,12 +123,11 @@ export default function ProductForm() {
     setVariants((prev) => prev.map((v, i) => (i === index ? { ...v, [field]: value } : v)));
   }
 
-  async function uploadImage(): Promise<string | null> {
-    if (!imageFile) return currentImageUrl;
-    const ext = imageFile.name.split(".").pop();
-    const path = `${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from("product-images").upload(path, imageFile, { upsert: true });
-    if (error) { toast.error("Image upload failed"); return currentImageUrl; }
+  async function uploadImageFile(file: File): Promise<string | null> {
+    const ext = file.name.split(".").pop();
+    const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error } = await supabase.storage.from("product-images").upload(path, file, { upsert: true });
+    if (error) { toast.error(`Image upload failed: ${error.message}`); return null; }
     const { data } = supabase.storage.from("product-images").getPublicUrl(path);
     return data.publicUrl;
   }
@@ -113,7 +139,20 @@ export default function ProductForm() {
     if (hasVariants && variants.some((v) => !v.price)) { toast.error("All variants need a price"); return; }
     setSubmitting(true);
 
-    const imageUrl = await uploadImage();
+    // Upload main image if changed
+    let mainImageUrl = currentMainImageUrl;
+    if (mainImageFile) {
+      mainImageUrl = await uploadImageFile(mainImageFile);
+    }
+
+    // Upload new gallery images
+    const newGalleryUrls: string[] = [];
+    for (const file of galleryFiles) {
+      const url = await uploadImageFile(file);
+      if (url) newGalleryUrls.push(url);
+    }
+    const allGalleryUrls = [...currentGalleryUrls, ...newGalleryUrls];
+
     const tagArray = tags.split(",").map((t) => t.trim()).filter(Boolean);
 
     const productData = {
@@ -122,9 +161,11 @@ export default function ProductForm() {
       category_id: categoryId || null,
       tags: tagArray,
       base_price: hasVariants ? null : parseFloat(basePrice) || null,
+      shipping_fee: parseFloat(shippingFee) || 0,
       has_variants: hasVariants,
       is_active: isActive,
-      main_image_url: imageUrl,
+      main_image_url: mainImageUrl,
+      images: allGalleryUrls,
     };
 
     let productId = id;
@@ -140,13 +181,21 @@ export default function ProductForm() {
 
     // Manage variants
     if (hasVariants && productId) {
-      // Delete removed variants
       if (isEdit) {
         const existingIds = variants.filter((v) => v.id).map((v) => v.id!);
-        await supabase.from("product_variants").delete().eq("product_id", productId).not("id", "in", `(${existingIds.join(",") || "null"})`);
+        if (existingIds.length > 0) {
+          await supabase
+            .from("product_variants")
+            .delete()
+            .eq("product_id", productId)
+            .not("id", "in", `(${existingIds.join(",")})`);
+        } else {
+          await supabase.from("product_variants").delete().eq("product_id", productId);
+        }
       }
 
       for (const v of variants) {
+        if (!v.price) continue;
         const vData = {
           product_id: productId,
           color: v.color.trim() || null,
@@ -166,9 +215,12 @@ export default function ProductForm() {
 
     toast.success(isEdit ? "Product updated!" : "Product created!");
     qc.invalidateQueries({ queryKey: ["admin-products"] });
+    qc.invalidateQueries({ queryKey: ["products-all"] });
     navigate("/admin/products");
     setSubmitting(false);
   }
+
+  const displayMainImage = mainImagePreview || currentMainImageUrl;
 
   return (
     <div className="animate-fade-in max-w-3xl">
@@ -224,26 +276,85 @@ export default function ProductForm() {
           </div>
         </div>
 
-        {/* Image */}
-        <div className="glass-card rounded-2xl p-6">
-          <h2 className="font-heading text-lg font-medium mb-4">Main Image</h2>
-          <div className="flex items-start gap-4">
-            <div className="w-24 h-24 rounded-xl overflow-hidden bg-surface-2 flex-shrink-0">
-              {imagePreview || currentImageUrl ? (
-                <img src={imagePreview || currentImageUrl!} alt="Preview" className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <ImageIcon size={24} className="text-foreground/20" />
-                </div>
-              )}
+        {/* Images */}
+        <div className="glass-card rounded-2xl p-6 space-y-5">
+          <h2 className="font-heading text-lg font-medium">Product Images</h2>
+
+          {/* Main Image */}
+          <div>
+            <p className="text-sm font-medium mb-3">Main Image <span className="text-foreground/40 font-normal">(shown on product cards)</span></p>
+            <div className="flex items-start gap-4">
+              <div className="w-24 h-24 rounded-xl overflow-hidden bg-surface-2 flex-shrink-0 border border-border">
+                {displayMainImage ? (
+                  <img src={displayMainImage} alt="Main" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <ImageIcon size={24} className="text-foreground/20" />
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="btn-secondary cursor-pointer text-sm">
+                  <Upload size={16} /> {displayMainImage ? "Change Image" : "Upload Image"}
+                  <input type="file" accept="image/*" onChange={handleMainImageChange} className="hidden" />
+                </label>
+                <p className="text-xs text-foreground/40 mt-2">JPG, PNG, WebP — max 10MB</p>
+              </div>
             </div>
-            <div>
-              <label className="btn-secondary cursor-pointer text-sm">
-                <Upload size={16} /> Upload Image
-                <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+          </div>
+
+          {/* Gallery Images */}
+          <div>
+            <p className="text-sm font-medium mb-3">
+              Gallery Images <span className="text-foreground/40 font-normal">(up to 6 extra images for the product page)</span>
+            </p>
+
+            {/* Current saved gallery */}
+            {currentGalleryUrls.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {currentGalleryUrls.map((url, i) => (
+                  <div key={url} className="relative group w-20 h-20 rounded-xl overflow-hidden border border-border">
+                    <img src={url} alt={`Gallery ${i + 1}`} className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => removeCurrentGalleryUrl(i)}
+                      className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X size={10} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* New gallery previews */}
+            {galleryPreviews.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {galleryPreviews.map((preview, i) => (
+                  <div key={preview} className="relative group w-20 h-20 rounded-xl overflow-hidden border-2 border-brand-blue/50">
+                    <img src={preview} alt={`New ${i + 1}`} className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => removeGalleryImage(i)}
+                      className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X size={10} />
+                    </button>
+                    <span className="absolute bottom-1 left-1 text-[10px] bg-brand-blue-deep text-white px-1 rounded">New</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {(currentGalleryUrls.length + galleryFiles.length) < 6 && (
+              <label className="btn-secondary cursor-pointer text-sm inline-flex">
+                <Plus size={16} /> Add Gallery Photos
+                <input type="file" accept="image/*" multiple onChange={handleGalleryChange} className="hidden" />
               </label>
-              <p className="text-xs text-foreground/40 mt-2">JPG, PNG, WebP — max 5MB</p>
-            </div>
+            )}
+            <p className="text-xs text-foreground/40 mt-2">
+              {currentGalleryUrls.length + galleryFiles.length}/6 gallery images
+            </p>
           </div>
         </div>
 
@@ -264,25 +375,39 @@ export default function ProductForm() {
           </div>
 
           {!hasVariants ? (
-            <div>
-              <label className="block text-sm font-medium mb-1.5">Base Price (₦) <span className="text-red-400">*</span></label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={basePrice}
-                onChange={(e) => setBasePrice(e.target.value)}
-                className="input-field max-w-xs"
-                placeholder="0.00"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Base Price (₦) <span className="text-red-400">*</span></label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={basePrice}
+                  onChange={(e) => setBasePrice(e.target.value)}
+                  className="input-field"
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Shipping Fee (₦)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={shippingFee}
+                  onChange={(e) => setShippingFee(e.target.value)}
+                  className="input-field"
+                  placeholder="0.00"
+                />
+              </div>
             </div>
           ) : (
             <div className="space-y-3">
-              <p className="text-sm text-foreground/50">Add product variants with individual pricing.</p>
+              <p className="text-sm text-foreground/50">Add variants with individual colour, size, price and stock.</p>
               {variants.map((v, i) => (
                 <div key={i} className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 bg-surface-2 rounded-xl relative">
                   <div>
-                    <label className="block text-xs text-foreground/50 mb-1">Color</label>
+                    <label className="block text-xs text-foreground/50 mb-1">Colour</label>
                     <input value={v.color} onChange={(e) => updateVariant(i, "color", e.target.value)} className="input-field py-2 text-sm" placeholder="e.g. Black" />
                   </div>
                   <div>

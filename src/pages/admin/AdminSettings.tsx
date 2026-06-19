@@ -1,14 +1,183 @@
-import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { Save, Loader2, Lock, Bell, Store } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Save, Loader2, Lock, Bell, Store, FileText, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { ADMIN_WHATSAPP } from "@/lib/utils";
 
+type SettingsTab = "account" | "terms" | "privacy";
+
+function useSettingValue(key: string) {
+  return useQuery({
+    queryKey: ["setting", key],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("settings")
+        .select("value")
+        .eq("key", key)
+        .maybeSingle();
+      return data?.value ?? "";
+    },
+  });
+}
+
+function RichTextEditor({
+  label,
+  settingKey,
+  description,
+  icon: Icon,
+}: {
+  label: string;
+  settingKey: string;
+  description: string;
+  icon: React.ElementType;
+}) {
+  const qc = useQueryClient();
+  const { data: savedValue = "", isLoading } = useSettingValue(settingKey);
+  const [content, setContent] = useState("");
+  const [isDirty, setIsDirty] = useState(false);
+
+  useEffect(() => {
+    if (savedValue !== undefined) {
+      setContent(savedValue);
+      setIsDirty(false);
+    }
+  }, [savedValue]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (value: string) => {
+      const { data: existing } = await supabase
+        .from("settings")
+        .select("id")
+        .eq("key", settingKey)
+        .maybeSingle();
+
+      if (existing) {
+        const { error } = await supabase
+          .from("settings")
+          .update({ value, updated_at: new Date().toISOString() })
+          .eq("key", settingKey);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("settings")
+          .insert({ key: settingKey, value });
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      toast.success(`${label} saved successfully`);
+      setIsDirty(false);
+      qc.invalidateQueries({ queryKey: ["setting", settingKey] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  function handleChange(val: string) {
+    setContent(val);
+    setIsDirty(val !== savedValue);
+  }
+
+  // Simple rich text toolbar actions
+  function insertFormat(prefix: string, suffix: string = "") {
+    const textarea = document.getElementById(`editor-${settingKey}`) as HTMLTextAreaElement;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = content.slice(start, end);
+    const newContent = content.slice(0, start) + prefix + selected + suffix + content.slice(end);
+    handleChange(newContent);
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + prefix.length, end + prefix.length);
+    }, 0);
+  }
+
+  const toolbarButtons = [
+    { label: "B", title: "Bold", action: () => insertFormat("**", "**"), cls: "font-bold" },
+    { label: "I", title: "Italic", action: () => insertFormat("_", "_"), cls: "italic" },
+    { label: "H2", title: "Heading", action: () => insertFormat("\n## "), cls: "text-xs font-semibold" },
+    { label: "•", title: "Bullet list", action: () => insertFormat("\n- "), cls: "text-base" },
+    { label: "1.", title: "Numbered list", action: () => insertFormat("\n1. "), cls: "text-xs font-medium" },
+    { label: "—", title: "Divider", action: () => insertFormat("\n\n---\n\n"), cls: "" },
+  ];
+
+  if (isLoading) return (
+    <div className="glass-card rounded-2xl p-6">
+      <div className="h-6 w-32 bg-surface-2 rounded animate-pulse mb-4" />
+      <div className="h-48 bg-surface-2 rounded-xl animate-pulse" />
+    </div>
+  );
+
+  return (
+    <div className="glass-card rounded-2xl p-6">
+      <div className="flex items-center gap-2 mb-2">
+        <Icon size={18} className="text-brand-blue-deep" />
+        <h2 className="font-heading text-xl font-medium">{label}</h2>
+        {isDirty && <span className="ml-2 text-xs text-orange-500 font-medium">• Unsaved changes</span>}
+      </div>
+      <p className="text-sm text-foreground/50 mb-4">{description}</p>
+
+      {/* Toolbar */}
+      <div className="flex items-center gap-1 flex-wrap p-2 bg-surface-2 rounded-t-xl border border-border border-b-0">
+        {toolbarButtons.map((btn) => (
+          <button
+            key={btn.label}
+            type="button"
+            title={btn.title}
+            onClick={btn.action}
+            className={`px-2.5 py-1.5 text-sm rounded hover:bg-white hover:shadow-sm transition-all min-w-[32px] text-foreground/70 hover:text-foreground ${btn.cls}`}
+          >
+            {btn.label}
+          </button>
+        ))}
+        <span className="ml-auto text-xs text-foreground/30 pr-1">Markdown supported</span>
+      </div>
+
+      {/* Textarea */}
+      <textarea
+        id={`editor-${settingKey}`}
+        value={content}
+        onChange={(e) => handleChange(e.target.value)}
+        rows={14}
+        placeholder={`Write your ${label.toLowerCase()} here...`}
+        className="w-full bg-white border border-border rounded-b-xl px-4 py-3 text-sm font-mono leading-relaxed
+          focus:outline-none focus:ring-2 focus:ring-brand-blue/40 focus:border-brand-blue
+          resize-y min-h-[200px] placeholder:text-muted-foreground transition-all duration-200"
+      />
+
+      {/* Preview toggle + Save */}
+      <div className="flex items-center justify-between mt-3">
+        <p className="text-xs text-foreground/40">{content.length} characters</p>
+        <button
+          onClick={() => saveMutation.mutate(content)}
+          disabled={saveMutation.isPending || !isDirty}
+          className={`btn-primary text-sm py-2.5 px-5 ${!isDirty ? "opacity-50" : ""}`}
+        >
+          {saveMutation.isPending ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+          {saveMutation.isPending ? "Saving..." : "Save Changes"}
+        </button>
+      </div>
+
+      {/* Live Preview */}
+      {content && (
+        <details className="mt-4">
+          <summary className="text-xs text-foreground/50 cursor-pointer hover:text-foreground transition-colors select-none">
+            Preview rendered content ▾
+          </summary>
+          <div className="mt-3 p-4 bg-surface-1 rounded-xl border border-border text-sm text-foreground/70 leading-relaxed whitespace-pre-wrap break-words">
+            {content}
+          </div>
+        </details>
+      )}
+    </div>
+  );
+}
+
 export default function AdminSettings() {
   const { user } = useAuth();
-  const [currentPw, setCurrentPw] = useState("");
+  const [activeTab, setActiveTab] = useState<SettingsTab>("account");
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
 
@@ -21,99 +190,150 @@ export default function AdminSettings() {
     },
     onSuccess: () => {
       toast.success("Password updated successfully");
-      setCurrentPw("");
       setNewPw("");
       setConfirmPw("");
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const tabs: { id: SettingsTab; label: string; icon: React.ElementType }[] = [
+    { id: "account", label: "Account", icon: Store },
+    { id: "terms", label: "Terms & Conditions", icon: FileText },
+    { id: "privacy", label: "Privacy Policy", icon: Shield },
+  ];
+
   return (
-    <div className="animate-fade-in max-w-2xl space-y-6">
-      <div>
+    <div className="animate-fade-in max-w-2xl">
+      <div className="mb-6">
         <h1 className="font-heading text-3xl font-light">Settings</h1>
-        <p className="text-foreground/50 text-sm mt-1">Manage your admin account and store settings.</p>
+        <p className="text-foreground/50 text-sm mt-1">Manage your admin account and store content.</p>
       </div>
 
-      {/* Account Info */}
-      <div className="glass-card rounded-2xl p-6">
-        <div className="flex items-center gap-2 mb-5">
-          <Store size={18} className="text-brand-blue-deep" />
-          <h2 className="font-heading text-xl font-medium">Account</h2>
-        </div>
-        <div className="space-y-3 text-sm">
-          <div className="flex items-center justify-between py-3 border-b border-border">
-            <span className="text-foreground/50">Admin Email</span>
-            <span className="font-medium">{user?.email}</span>
-          </div>
-          <div className="flex items-center justify-between py-3 border-b border-border">
-            <span className="text-foreground/50">WhatsApp Notifications</span>
-            <span className="font-medium">+{ADMIN_WHATSAPP}</span>
-          </div>
-          <div className="flex items-center justify-between py-3">
-            <span className="text-foreground/50">Store Name</span>
-            <span className="font-medium">Volta Bianca</span>
-          </div>
-        </div>
-      </div>
-
-      {/* WhatsApp Notifications Info */}
-      <div className="glass-card rounded-2xl p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Bell size={18} className="text-brand-blue-deep" />
-          <h2 className="font-heading text-xl font-medium">Order Notifications</h2>
-        </div>
-        <div className="bg-brand-blue/10 border border-brand-blue/20 rounded-xl p-4 text-sm">
-          <p className="font-medium text-brand-blue-deep mb-2">WhatsApp Notifications Active</p>
-          <p className="text-foreground/60 leading-relaxed">
-            When a customer places an order, their order details are automatically sent to your WhatsApp{" "}
-            <strong>+{ADMIN_WHATSAPP}</strong>. You'll receive the customer's name, phone, address, items,
-            and total amount — and can respond directly for delivery coordination.
-          </p>
-        </div>
-      </div>
-
-      {/* Change Password */}
-      <div className="glass-card rounded-2xl p-6">
-        <div className="flex items-center gap-2 mb-5">
-          <Lock size={18} className="text-brand-blue-deep" />
-          <h2 className="font-heading text-xl font-medium">Change Password</h2>
-        </div>
-        <form
-          onSubmit={(e) => { e.preventDefault(); changePassword.mutate(); }}
-          className="space-y-4"
-        >
-          <div>
-            <label className="block text-sm font-medium mb-1.5">New Password</label>
-            <input
-              type="password"
-              value={newPw}
-              onChange={(e) => setNewPw(e.target.value)}
-              className="input-field"
-              placeholder="Minimum 8 characters"
-              minLength={8}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1.5">Confirm New Password</label>
-            <input
-              type="password"
-              value={confirmPw}
-              onChange={(e) => setConfirmPw(e.target.value)}
-              className="input-field"
-              placeholder="Repeat new password"
-            />
-          </div>
+      {/* Tab Navigation */}
+      <div className="flex gap-1 p-1 bg-surface-2 rounded-xl mb-6 border border-border">
+        {tabs.map(({ id, label, icon: Icon }) => (
           <button
-            type="submit"
-            disabled={changePassword.isPending || !newPw || !confirmPw}
-            className="btn-primary"
+            key={id}
+            onClick={() => setActiveTab(id)}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+              activeTab === id
+                ? "bg-white text-foreground shadow-sm"
+                : "text-foreground/50 hover:text-foreground"
+            }`}
           >
-            {changePassword.isPending ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-            Update Password
+            <Icon size={14} />
+            <span className="hidden sm:inline">{label}</span>
+            <span className="sm:hidden">{id === "account" ? "Account" : id === "terms" ? "Terms" : "Privacy"}</span>
           </button>
-        </form>
+        ))}
       </div>
+
+      {/* ── Account Tab ── */}
+      {activeTab === "account" && (
+        <div className="space-y-6 animate-fade-in">
+          {/* Account Info */}
+          <div className="glass-card rounded-2xl p-6">
+            <div className="flex items-center gap-2 mb-5">
+              <Store size={18} className="text-brand-blue-deep" />
+              <h2 className="font-heading text-xl font-medium">Account Info</h2>
+            </div>
+            <div className="space-y-0">
+              {[
+                { label: "Admin Email", value: user?.email },
+                { label: "WhatsApp Notifications", value: `+${ADMIN_WHATSAPP}` },
+                { label: "Store Name", value: "Volta Bianca" },
+                { label: "Role", value: "Super Admin" },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex items-center justify-between py-3.5 border-b border-border last:border-0">
+                  <span className="text-sm text-foreground/50">{label}</span>
+                  <span className="text-sm font-medium">{value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Notifications Info */}
+          <div className="glass-card rounded-2xl p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Bell size={18} className="text-brand-blue-deep" />
+              <h2 className="font-heading text-xl font-medium">Order Notifications</h2>
+            </div>
+            <div className="bg-brand-blue/10 border border-brand-blue/20 rounded-xl p-4 text-sm">
+              <p className="font-medium text-brand-blue-deep mb-1.5">WhatsApp Notifications Active</p>
+              <p className="text-foreground/60 leading-relaxed">
+                New orders are automatically sent to WhatsApp <strong>+{ADMIN_WHATSAPP}</strong>. You'll receive
+                customer name, phone, address, all items and total amount — reply directly for delivery coordination.
+              </p>
+            </div>
+          </div>
+
+          {/* Change Password */}
+          <div className="glass-card rounded-2xl p-6">
+            <div className="flex items-center gap-2 mb-5">
+              <Lock size={18} className="text-brand-blue-deep" />
+              <h2 className="font-heading text-xl font-medium">Change Password</h2>
+            </div>
+            <form
+              onSubmit={(e) => { e.preventDefault(); changePassword.mutate(); }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-sm font-medium mb-1.5">New Password</label>
+                <input
+                  type="password"
+                  value={newPw}
+                  onChange={(e) => setNewPw(e.target.value)}
+                  className="input-field"
+                  placeholder="Minimum 8 characters"
+                  minLength={8}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Confirm New Password</label>
+                <input
+                  type="password"
+                  value={confirmPw}
+                  onChange={(e) => setConfirmPw(e.target.value)}
+                  className="input-field"
+                  placeholder="Repeat new password"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={changePassword.isPending || !newPw || !confirmPw}
+                className="btn-primary disabled:opacity-50"
+              >
+                {changePassword.isPending ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                Update Password
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Terms Tab ── */}
+      {activeTab === "terms" && (
+        <div className="animate-fade-in">
+          <RichTextEditor
+            label="Terms & Conditions"
+            settingKey="terms"
+            description="Define the terms of service for your store. Customers can view this on the Terms page."
+            icon={FileText}
+          />
+        </div>
+      )}
+
+      {/* ── Privacy Tab ── */}
+      {activeTab === "privacy" && (
+        <div className="animate-fade-in">
+          <RichTextEditor
+            label="Privacy Policy"
+            settingKey="privacy"
+            description="Explain how you collect, use and protect customer data. Customers can view this on the Privacy page."
+            icon={Shield}
+          />
+        </div>
+      )}
     </div>
   );
 }

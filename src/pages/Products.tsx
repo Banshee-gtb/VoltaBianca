@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { Search, SlidersHorizontal, X } from "lucide-react";
+import { Search, X, SlidersHorizontal } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import type { Product, Category } from "@/types";
 import ProductCard from "@/components/features/ProductCard";
@@ -10,16 +10,37 @@ import Footer from "@/components/layout/Footer";
 
 export default function Products() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [search, setSearch] = useState(searchParams.get("q") ?? "");
+  const [searchInput, setSearchInput] = useState(searchParams.get("q") ?? "");
+  const [debouncedSearch, setDebouncedSearch] = useState(searchParams.get("q") ?? "");
   const [selectedCat, setSelectedCat] = useState(searchParams.get("cat") ?? "");
-  const [showFilters, setShowFilters] = useState(false);
+  const [selectedTags, setSelectedTags] = useState<string[]>(() => {
+    const tag = searchParams.get("tag");
+    return tag ? [tag] : [];
+  });
 
+  // Sync from URL params on mount
   useEffect(() => {
     const q = searchParams.get("q") ?? "";
     const cat = searchParams.get("cat") ?? "";
-    setSearch(q);
+    setSearchInput(q);
+    setDebouncedSearch(q);
     setSelectedCat(cat);
-  }, [searchParams]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Debounce search input — real-time with 300ms delay
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchInput), 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  // Sync state to URL params
+  useEffect(() => {
+    const params: Record<string, string> = {};
+    if (debouncedSearch.trim()) params.q = debouncedSearch.trim();
+    if (selectedCat) params.cat = selectedCat;
+    if (selectedTags.length === 1) params.tag = selectedTags[0];
+    setSearchParams(params, { replace: true });
+  }, [debouncedSearch, selectedCat, selectedTags]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: categories = [] } = useQuery({
     queryKey: ["categories"],
@@ -29,45 +50,67 @@ export default function Products() {
     },
   });
 
-  const { data: products = [], isLoading } = useQuery({
-    queryKey: ["products", search, selectedCat],
+  // Fetch all active products — filtering done client-side for real-time feel
+  const { data: allProducts = [], isLoading } = useQuery({
+    queryKey: ["products-all"],
     queryFn: async () => {
-      let query = supabase
+      const { data } = await supabase
         .from("products")
         .select("*, categories(*), product_variants(*)")
         .eq("is_active", true)
         .order("created_at", { ascending: false });
-
-      if (search.trim()) {
-        query = query.ilike("title", `%${search.trim()}%`);
-      }
-
-      const { data } = await query;
-      let results = (data ?? []) as Product[];
-
-      if (selectedCat) {
-        results = results.filter((p) =>
-          p.categories?.name?.toLowerCase().includes(selectedCat.toLowerCase())
-        );
-      }
-
-      return results;
+      return (data ?? []) as Product[];
     },
+    staleTime: 30_000,
   });
 
-  function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
-    const params: Record<string, string> = {};
-    if (search.trim()) params.q = search.trim();
-    if (selectedCat) params.cat = selectedCat;
-    setSearchParams(params);
+  // Collect all unique tags across products
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    allProducts.forEach((p) => p.tags?.forEach((t) => tagSet.add(t)));
+    return [...tagSet].sort();
+  }, [allProducts]);
+
+  // Client-side filtering — real-time as inputs change
+  const products = useMemo(() => {
+    let results = allProducts;
+
+    if (debouncedSearch.trim()) {
+      const q = debouncedSearch.trim().toLowerCase();
+      results = results.filter(
+        (p) =>
+          p.title.toLowerCase().includes(q) ||
+          p.description?.toLowerCase().includes(q) ||
+          p.tags?.some((t) => t.toLowerCase().includes(q))
+      );
+    }
+
+    if (selectedCat) {
+      results = results.filter((p) => p.categories?.id === selectedCat || p.categories?.name === selectedCat);
+    }
+
+    if (selectedTags.length > 0) {
+      results = results.filter((p) => selectedTags.every((tag) => p.tags?.includes(tag)));
+    }
+
+    return results;
+  }, [allProducts, debouncedSearch, selectedCat, selectedTags]);
+
+  function toggleTag(tag: string) {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
   }
 
-  function clearFilters() {
-    setSearch("");
+  function clearAll() {
+    setSearchInput("");
+    setDebouncedSearch("");
     setSelectedCat("");
-    setSearchParams({});
+    setSelectedTags([]);
+    setSearchParams({}, { replace: true });
   }
+
+  const hasFilters = debouncedSearch.trim() || selectedCat || selectedTags.length > 0;
 
   return (
     <div className="min-h-screen">
@@ -77,72 +120,120 @@ export default function Products() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-10 pb-6">
         <h1 className="font-heading text-4xl sm:text-5xl font-light mb-2">Shop All</h1>
         <p className="text-foreground/50 text-sm">
-          {products.length} {products.length === 1 ? "product" : "products"}
-          {selectedCat ? ` in ${selectedCat}` : ""}
+          {isLoading ? "Loading..." : `${products.length} ${products.length === 1 ? "product" : "products"}${selectedCat ? ` in ${categories.find(c => c.id === selectedCat || c.name === selectedCat)?.name ?? selectedCat}` : ""}`}
         </p>
       </div>
 
-      {/* Search & Filters */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 mb-8">
-        <form onSubmit={handleSearch} className="flex gap-3 mb-4">
-          <div className="relative flex-1">
-            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-foreground/40" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search products..."
-              className="input-field pl-10"
-            />
-          </div>
-          <button type="submit" className="btn-primary px-5">Search</button>
-          <button
-            type="button"
-            onClick={() => setShowFilters(!showFilters)}
-            className="btn-secondary px-4 gap-2"
-          >
-            <SlidersHorizontal size={16} />
-            <span className="hidden sm:inline">Filters</span>
-          </button>
-        </form>
-
-        {/* Category filters */}
-        {showFilters && (
-          <div className="flex flex-wrap gap-2 animate-fade-in">
+      {/* ── Search Bar (real-time, no submit) ── */}
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 mb-5">
+        <div className="relative">
+          <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-foreground/40 pointer-events-none" />
+          <input
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Search products, tags, descriptions..."
+            className="input-field pl-10 pr-10"
+            autoComplete="off"
+          />
+          {searchInput && (
             <button
-              onClick={() => { setSelectedCat(""); setSearchParams(search ? { q: search } : {}); }}
-              className={`tag-pill cursor-pointer transition-all ${!selectedCat ? "bg-brand-blue text-white border-brand-blue" : ""}`}
+              onClick={() => setSearchInput("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground p-1 transition-colors"
             >
-              All
+              <X size={15} />
             </button>
-            {categories.map((cat) => (
-              <button
-                key={cat.id}
-                onClick={() => {
-                  setSelectedCat(cat.name);
-                  const params: Record<string, string> = { cat: cat.name };
-                  if (search) params.q = search;
-                  setSearchParams(params);
-                }}
-                className={`tag-pill cursor-pointer transition-all ${selectedCat === cat.name ? "bg-brand-blue-deep text-white border-brand-blue-deep" : ""}`}
-              >
-                {cat.name}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Active filters */}
-        {(search || selectedCat) && (
-          <div className="flex items-center gap-3 mt-3">
-            <span className="text-sm text-foreground/50">Active filters:</span>
-            {search && <span className="tag-pill flex items-center gap-1">"{search}" <button onClick={() => { setSearch(""); setSearchParams(selectedCat ? { cat: selectedCat } : {}); }}><X size={12} /></button></span>}
-            {selectedCat && <span className="tag-pill flex items-center gap-1">{selectedCat} <button onClick={() => { setSelectedCat(""); setSearchParams(search ? { q: search } : {}); }}><X size={12} /></button></span>}
-            <button onClick={clearFilters} className="text-xs text-foreground/40 hover:text-foreground transition-colors underline">Clear all</button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-      {/* Products Grid */}
+      {/* ── Category Filter Pills ── */}
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 mb-4">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-foreground/40 font-medium uppercase tracking-wide flex-shrink-0">
+            <SlidersHorizontal size={12} className="inline mr-1" />
+            Category
+          </span>
+          <button
+            onClick={() => setSelectedCat("")}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-all duration-200 ${
+              !selectedCat
+                ? "bg-brand-blue-deep text-white border-brand-blue-deep"
+                : "border-border hover:border-brand-blue/50 text-foreground/70 hover:text-foreground"
+            }`}
+          >
+            All
+          </button>
+          {categories.map((cat) => (
+            <button
+              key={cat.id}
+              onClick={() => setSelectedCat(selectedCat === cat.id || selectedCat === cat.name ? "" : cat.name)}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-all duration-200 ${
+                selectedCat === cat.id || selectedCat === cat.name
+                  ? "bg-brand-blue-deep text-white border-brand-blue-deep"
+                  : "border-border hover:border-brand-blue/50 text-foreground/70 hover:text-foreground"
+              }`}
+            >
+              {cat.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Tag Filter Chips ── */}
+      {allTags.length > 0 && (
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 mb-6">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-foreground/40 font-medium uppercase tracking-wide flex-shrink-0">Tags</span>
+            {allTags.map((tag) => {
+              const isSelected = selectedTags.includes(tag);
+              return (
+                <button
+                  key={tag}
+                  onClick={() => toggleTag(tag)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium border transition-all duration-200 ${
+                    isSelected
+                      ? "bg-brand-purple-deep text-white border-brand-purple-deep"
+                      : "bg-brand-blue/10 text-brand-blue-deep border-brand-blue/30 hover:border-brand-blue-deep"
+                  }`}
+                >
+                  {isSelected && <X size={10} className="inline mr-0.5" />}
+                  {tag}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Active Filter Summary ── */}
+      {hasFilters && (
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 mb-4 flex items-center gap-3 flex-wrap">
+          <span className="text-xs text-foreground/40">Showing filtered results:</span>
+          {debouncedSearch && (
+            <span className="tag-pill flex items-center gap-1.5 text-xs">
+              "{debouncedSearch}"
+              <button onClick={() => setSearchInput("")} className="hover:text-red-400 transition-colors"><X size={11} /></button>
+            </span>
+          )}
+          {selectedCat && (
+            <span className="tag-pill flex items-center gap-1.5 text-xs">
+              {categories.find(c => c.id === selectedCat || c.name === selectedCat)?.name ?? selectedCat}
+              <button onClick={() => setSelectedCat("")} className="hover:text-red-400 transition-colors"><X size={11} /></button>
+            </span>
+          )}
+          {selectedTags.map((tag) => (
+            <span key={tag} className="inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full bg-brand-purple/20 text-brand-purple-deep border border-brand-purple/30">
+              {tag}
+              <button onClick={() => toggleTag(tag)} className="hover:text-red-400 transition-colors"><X size={11} /></button>
+            </span>
+          ))}
+          <button onClick={clearAll} className="text-xs text-foreground/40 hover:text-foreground underline transition-colors">
+            Clear all
+          </button>
+        </div>
+      )}
+
+      {/* ── Products Grid ── */}
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-16">
         {isLoading ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
@@ -152,10 +243,11 @@ export default function Products() {
           </div>
         ) : products.length === 0 ? (
           <div className="text-center py-24">
+            <Search size={48} className="mx-auto text-foreground/15 mb-4" strokeWidth={1} />
             <p className="font-heading text-2xl font-light text-foreground/40 mb-2">No products found</p>
             <p className="text-sm text-foreground/30">Try adjusting your search or filters</p>
-            {(search || selectedCat) && (
-              <button onClick={clearFilters} className="btn-secondary mt-6 text-sm">Clear filters</button>
+            {hasFilters && (
+              <button onClick={clearAll} className="btn-secondary mt-6 text-sm">Clear all filters</button>
             )}
           </div>
         ) : (
