@@ -45,7 +45,7 @@ export default function AdminLayout() {
         <div className="p-6 border-b border-border flex items-center justify-between">
           <div>
             <h1 className="font-heading text-xl font-light tracking-widest">
-              VOLTA <span className="text-brand-blue-deep font-medium">BIANCA</span>
+              MiMis <span className="text-brand-blue-deep font-medium">Fashion Hub</span>
             </h1>
             <p className="text-xs text-foreground/40 mt-0.5">Admin Panel</p>
           </div>
@@ -99,7 +99,7 @@ export default function AdminLayout() {
             <Menu size={20} />
           </button>
           <span className="font-heading text-lg font-light tracking-wider">
-            VOLTA <span className="text-brand-blue-deep font-medium">BIANCA</span>
+            MiMis <span className="text-brand-blue-deep font-medium">Fashion Hub</span>
           </span>
           <div className="w-10" />
         </header>

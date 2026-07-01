@@ -241,7 +241,7 @@ export default function AdminSettings() {
               {[
                 { label: "Admin Email", value: user?.email },
                 { label: "WhatsApp Notifications", value: `+${ADMIN_WHATSAPP}` },
-                { label: "Store Name", value: "Volta Bianca" },
+                { label: "Store Name", value: "MiMis Fashion Hub" },
                 { label: "Role", value: "Super Admin" },
               ].map(({ label, value }) => (
                 <div key={label} className="flex items-center justify-between py-3.5 border-b border-border last:border-0">

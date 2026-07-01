@@ -9,7 +9,7 @@ export default function Footer() {
           {/* Brand */}
           <div>
             <h2 className="font-heading text-2xl font-light tracking-widest mb-3">
-              VOLTA <span className="text-brand-blue-deep font-medium">BIANCA</span>
+              MiMis <span className="text-brand-blue-deep font-medium">Fashion Hub</span>
             </h2>
             <p className="text-sm text-foreground/60 leading-relaxed">
               Curated fashion, beauty, and lifestyle — delivered with care and elegance.
@@ -48,7 +48,7 @@ export default function Footer() {
         </div>
 
         <div className="border-t border-border mt-10 pt-6 text-center">
-          <p className="text-xs text-foreground/40">© 2025 Volta Bianca. All rights reserved.</p>
+          <p className="text-xs text-foreground/40">© 2025 MiMis Fashion Hub. All rights reserved.</p>
         </div>
       </div>
     </footer>

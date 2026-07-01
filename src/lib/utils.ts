@@ -55,7 +55,7 @@ export function buildWhatsAppOrderMessage(
     .join("\n");
 
   return encodeURIComponent(
-    `🛍️ *NEW ORDER — VOLTA BIANCA*\n\n` +
+    `🛍️ *NEW ORDER — MIMIS FASHION HUB*\n\n` +
     `Order ID: #${orderId.slice(0, 8).toUpperCase()}\n\n` +
     `👤 *Customer:* ${customerName}\n` +
     `📞 *Phone:* ${customerPhone}\n` +

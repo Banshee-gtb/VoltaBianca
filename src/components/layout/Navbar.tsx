@@ -28,7 +28,7 @@ export default function Navbar() {
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <Link to="/" className="font-heading text-2xl font-light tracking-widest text-foreground">
-              VOLTA <span className="text-brand-blue-deep font-medium">BIANCA</span>
+              MiMis <span className="text-brand-blue-deep font-medium">Fashion Hub</span>
             </Link>
 
             {/* Desktop nav */}

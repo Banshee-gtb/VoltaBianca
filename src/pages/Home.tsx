@@ -79,7 +79,7 @@ export default function Home() {
         <div className="hidden lg:block absolute right-0 top-0 bottom-0 w-2/5 overflow-hidden">
           <img
             src="https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=800&fit=crop&q=80"
-            alt="Volta Bianca Fashion"
+            alt="MiMis Fashion Hub"
             className="w-full h-full object-cover opacity-80"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-surface-1/90 via-surface-1/20 to-transparent" />
