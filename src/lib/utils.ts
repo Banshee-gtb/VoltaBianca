@@ -48,20 +48,29 @@ export function buildWhatsAppOrderMessage(
   customerPhone: string,
   customerAddress: string,
   items: Array<{ title: string; variant: string | null; qty: number; price: number }>,
-  total: number
+  total: number,
+  deliveryType: "delivery" | "pickup" = "delivery",
+  customerEmail?: string
 ): string {
   const itemLines = items
     .map((i) => `  • ${i.title}${i.variant ? ` (${i.variant})` : ""} x${i.qty} — ₦${i.price.toLocaleString()}`)
     .join("\n");
+
+  const deliveryLine = deliveryType === "pickup"
+    ? "📦 *Method:* PICKUP"
+    : `📍 *Address:* ${customerAddress}`;
+
+  const emailLine = customerEmail ? `✉️ *Email:* ${customerEmail}\n` : "";
 
   return encodeURIComponent(
     `🛍️ *NEW ORDER — MIMIS FASHION HUB*\n\n` +
     `Order ID: #${orderId.slice(0, 8).toUpperCase()}\n\n` +
     `👤 *Customer:* ${customerName}\n` +
     `📞 *Phone:* ${customerPhone}\n` +
-    `📍 *Address:* ${customerAddress}\n\n` +
+    emailLine +
+    `${deliveryLine}\n\n` +
     `🛒 *Items:*\n${itemLines}\n\n` +
     `💰 *Total:* ₦${total.toLocaleString()}\n\n` +
-    `Please confirm the order and arrange delivery. Thank you! 🙏`
+    `Please confirm the order and arrange ${deliveryType === "pickup" ? "pickup" : "delivery"}. Thank you! 🙏`
   );
 }

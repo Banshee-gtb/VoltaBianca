@@ -1,11 +1,120 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles, ChevronLeft, ChevronRight } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import type { Product, Category } from "@/types";
 import ProductCard from "@/components/features/ProductCard";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
+
+const HERO_SLIDES = [
+  {
+    url: "https://images.unsplash.com/photo-1541643600914-78b084683702?w=1400&fit=crop&q=85&auto=format",
+    label: "Luxury Fragrances",
+  },
+  {
+    url: "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=1400&fit=crop&q=85&auto=format",
+    label: "Premium Fashion",
+  },
+  {
+    url: "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=1400&fit=crop&q=85&auto=format",
+    label: "Human Hair & Beauty",
+  },
+  {
+    url: "https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=1400&fit=crop&q=85&auto=format",
+    label: "Designer Clothing",
+  },
+  {
+    url: "https://images.unsplash.com/photo-1571781926291-c477ebfd024b?w=1400&fit=crop&q=85&auto=format",
+    label: "Beauty & Skincare",
+  },
+];
+
+function HeroSlideshow() {
+  const [active, setActive] = useState(0);
+  const [transitioning, setTransitioning] = useState(false);
+
+  function goTo(index: number) {
+    if (transitioning) return;
+    setTransitioning(true);
+    setTimeout(() => {
+      setActive(index);
+      setTransitioning(false);
+    }, 300);
+  }
+
+  function prev() {
+    goTo(active === 0 ? HERO_SLIDES.length - 1 : active - 1);
+  }
+
+  function next() {
+    goTo(active === HERO_SLIDES.length - 1 ? 0 : active + 1);
+  }
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setActive((prev) => (prev === HERO_SLIDES.length - 1 ? 0 : prev + 1));
+    }, 5000);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <div className="absolute inset-0 overflow-hidden">
+      {HERO_SLIDES.map((slide, i) => (
+        <div
+          key={slide.url}
+          className={`absolute inset-0 transition-opacity duration-700 ease-in-out ${
+            i === active ? "opacity-100" : "opacity-0"
+          }`}
+        >
+          <img
+            src={slide.url}
+            alt={slide.label}
+            className="w-full h-full object-cover"
+            loading={i === 0 ? "eager" : "lazy"}
+          />
+        </div>
+      ))}
+
+      {/* Blur + gradient overlay */}
+      <div className="absolute inset-0 bg-gradient-to-r from-surface-1/95 via-surface-1/70 to-surface-1/40 backdrop-blur-[2px]" />
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-surface-1/60" />
+
+      {/* Slide controls */}
+      <button
+        onClick={prev}
+        className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/30 backdrop-blur-sm flex items-center justify-center text-foreground hover:bg-white/60 transition-all duration-200 z-10"
+      >
+        <ChevronLeft size={20} />
+      </button>
+      <button
+        onClick={next}
+        className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/30 backdrop-blur-sm flex items-center justify-center text-foreground hover:bg-white/60 transition-all duration-200 z-10"
+      >
+        <ChevronRight size={20} />
+      </button>
+
+      {/* Slide label + dots */}
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 z-10">
+        <span className="text-xs text-foreground/60 tracking-widest uppercase bg-white/40 backdrop-blur-sm px-3 py-1 rounded-full border border-white/30">
+          {HERO_SLIDES[active].label}
+        </span>
+        <div className="flex gap-1.5">
+          {HERO_SLIDES.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => goTo(i)}
+              className={`rounded-full transition-all duration-300 ${
+                i === active ? "w-6 h-2 bg-brand-blue-deep" : "w-2 h-2 bg-foreground/30 hover:bg-foreground/50"
+              }`}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Home() {
   const { data: products = [] } = useQuery({
@@ -33,13 +142,12 @@ export default function Home() {
     <div className="min-h-screen">
       <Navbar />
 
-      {/* Hero */}
-      <section className="gradient-hero min-h-[90vh] flex items-center relative overflow-hidden">
-        {/* Decorative blobs */}
-        <div className="absolute -top-32 -right-32 w-96 h-96 bg-brand-blue/20 rounded-full blur-3xl" />
-        <div className="absolute -bottom-20 -left-20 w-80 h-80 bg-brand-purple/20 rounded-full blur-3xl" />
+      {/* ── Hero with Image Slideshow ── */}
+      <section className="relative min-h-[92vh] flex items-center overflow-hidden">
+        <HeroSlideshow />
 
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 w-full py-20">
+        {/* Content */}
+        <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 w-full py-24">
           <div className="max-w-2xl">
             <div className="flex items-center gap-2 mb-6">
               <Sparkles size={16} className="text-brand-purple-deep" />
@@ -56,7 +164,8 @@ export default function Home() {
             </h1>
 
             <p className="text-lg text-foreground/60 leading-relaxed max-w-lg mb-10">
-              Discover handpicked pieces designed to elevate your everyday — from timeless fashion to luxe beauty essentials.
+              Discover handpicked pieces designed to elevate your everyday — from timeless fashion
+              to luxe beauty essentials and premium hair collections.
             </p>
 
             <div className="flex flex-wrap gap-4">
@@ -72,21 +181,23 @@ export default function Home() {
                 Chat With Us
               </a>
             </div>
-          </div>
-        </div>
 
-        {/* Hero image */}
-        <div className="hidden lg:block absolute right-0 top-0 bottom-0 w-2/5 overflow-hidden">
-          <img
-            src="https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=800&fit=crop&q=80"
-            alt="MiMis Fashion Hub"
-            className="w-full h-full object-cover opacity-80"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-surface-1/90 via-surface-1/20 to-transparent" />
+            {/* Trust pills */}
+            <div className="flex flex-wrap gap-3 mt-8">
+              {["Free Consultation", "Fast Delivery", "Quality Guaranteed"].map((t) => (
+                <span
+                  key={t}
+                  className="text-xs font-medium px-3 py-1.5 rounded-full bg-white/60 backdrop-blur-sm border border-white/50 text-foreground/70"
+                >
+                  ✓ {t}
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* Categories */}
+      {/* ── Categories ── */}
       {categories.length > 0 && (
         <section className="max-w-6xl mx-auto px-4 sm:px-6 py-16">
           <h2 className="section-title mb-8">Shop by Category</h2>
@@ -105,11 +216,14 @@ export default function Home() {
         </section>
       )}
 
-      {/* Featured Products */}
+      {/* ── Featured Products ── */}
       <section className="max-w-6xl mx-auto px-4 sm:px-6 pb-16">
         <div className="flex items-center justify-between mb-8">
           <h2 className="section-title">New Arrivals</h2>
-          <Link to="/products" className="text-sm text-brand-blue-deep hover:text-brand-purple-deep transition-colors flex items-center gap-1">
+          <Link
+            to="/products"
+            className="text-sm text-brand-blue-deep hover:text-brand-purple-deep transition-colors flex items-center gap-1"
+          >
             View all <ArrowRight size={14} />
           </Link>
         </div>
@@ -121,18 +235,22 @@ export default function Home() {
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
-            {products.map((p) => <ProductCard key={p.id} product={p} />)}
+            {products.map((p) => (
+              <ProductCard key={p.id} product={p} />
+            ))}
           </div>
         )}
       </section>
 
-      {/* CTA Banner */}
+      {/* ── CTA Banner ── */}
       <section className="bg-gradient-to-r from-brand-blue/20 to-brand-purple/20 border-y border-border/50">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 text-center">
           <h2 className="font-heading text-3xl sm:text-4xl font-light mb-4">
             Need help finding something?
           </h2>
-          <p className="text-foreground/60 mb-8">Chat with us directly on WhatsApp — we respond fast.</p>
+          <p className="text-foreground/60 mb-8">
+            Chat with us directly on WhatsApp — we respond fast.
+          </p>
           <a
             href="https://wa.me/2349132996389"
             target="_blank"
