@@ -21,10 +21,13 @@ import AdminLayout from "@/components/layout/AdminLayout";
 function AdminGuard({ children }: { children: React.ReactNode }) {
   const { isAdmin, loading } = useAuth();
 
-  // Always show spinner while auth is resolving — prevents premature 404 redirect
+  // Always show spinner while auth is resolving — prevents premature redirect
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-surface-1">
-      <div className="w-8 h-8 border-2 border-brand-blue-deep border-t-transparent rounded-full animate-spin" />
+      <div className="flex flex-col items-center gap-4">
+        <div className="w-10 h-10 border-2 border-brand-blue-deep border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm text-foreground/40">Loading admin panel...</p>
+      </div>
     </div>
   );
 

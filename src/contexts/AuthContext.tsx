@@ -22,40 +22,57 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
+  // Start loading = true; only flip to false once initial session check is complete
   const [loading, setLoading] = useState(true);
 
-  async function checkAdmin(u: User) {
+  async function checkAdmin(u: User): Promise<void> {
     const { data } = await supabase
       .from("admins")
       .select("id, email")
       .eq("email", u.email ?? "")
       .maybeSingle();
-    if (data) setAdminUser(data);
-    else setAdminUser(null);
+    setAdminUser(data ?? null);
   }
 
   useEffect(() => {
     let mounted = true;
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!mounted) return;
-      setUser(session?.user ?? null);
-      if (session?.user) checkAdmin(session.user).finally(() => { if (mounted) setLoading(false); });
-      else setLoading(false);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    // Safety #1: restore session on page load / refresh
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!mounted) return;
       setUser(session?.user ?? null);
       if (session?.user) {
         await checkAdmin(session.user);
-      } else {
-        setAdminUser(null);
       }
-      setLoading(false);
+      if (mounted) setLoading(false);
     });
 
-    return () => { mounted = false; subscription.unsubscribe(); };
+    // Safety #2: real-time auth state changes (login, logout, token refresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (!mounted) return;
+
+        if (event === "SIGNED_IN" && session?.user) {
+          setUser(session.user);
+          await checkAdmin(session.user);
+          // Only clear the loading spinner if it's still spinning
+          setLoading(false);
+        } else if (event === "SIGNED_OUT") {
+          setUser(null);
+          setAdminUser(null);
+          setLoading(false);
+        } else if (event === "TOKEN_REFRESHED" && session?.user) {
+          setUser(session.user);
+          // Don't re-check admin on token refresh — no change expected
+        }
+        // For other events (INITIAL_SESSION handled above) don't touch loading
+      }
+    );
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signOut = async () => {

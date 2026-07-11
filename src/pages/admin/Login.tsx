@@ -85,12 +85,14 @@ export default function AdminLogin() {
       const { data: admin } = await supabase.from("admins").select("id").eq("email", email).maybeSingle();
       if (!admin) {
         await supabase.auth.signOut();
-        toast.error("Access denied.");
+        toast.error("Access denied. This email is not registered as admin.");
         setSubmitting(false);
         return;
       }
 
-      navigate("/admin");
+      toast.success("Account set up! Logging you in...");
+      // Small delay to let AuthContext pick up the new session before navigating
+      setTimeout(() => navigate("/admin"), 800);
     }
     setSubmitting(false);
   }
@@ -105,7 +107,7 @@ export default function AdminLogin() {
         {/* Logo */}
         <div className="text-center mb-8">
           <h1 className="font-heading text-4xl font-light tracking-widest mb-1">
-            VOLTA <span className="text-brand-blue-deep font-medium">BIANCA</span>
+            MiMis <span className="text-brand-blue-deep font-medium">Fashion Hub</span>
           </h1>
           <p className="text-sm text-foreground/40 tracking-wider">Admin Portal</p>
         </div>
