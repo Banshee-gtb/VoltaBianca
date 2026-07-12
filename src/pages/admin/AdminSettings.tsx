@@ -3,18 +3,27 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Save, Loader2, Lock, Bell, Store, FileText, Shield,
   CreditCard, Plus, Trash2, Eye, EyeOff, CheckCircle2,
+  Share2, Link as LinkIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { ADMIN_WHATSAPP } from "@/lib/utils";
 
-type SettingsTab = "account" | "payment" | "terms" | "privacy";
+type SettingsTab = "account" | "payment" | "socials" | "terms" | "privacy";
 
 interface BankAccount {
   bankName: string;
   accountName: string;
   accountNumber: string;
+}
+
+interface SocialLinks {
+  instagram: string;
+  tiktok: string;
+  whatsapp: string;
+  x: string;
+  shopify: string;
 }
 
 // ── Shared hook ────────────────────────────────────────────────────────────
@@ -30,6 +39,17 @@ function useSettingValue(key: string) {
       return data?.value ?? "";
     },
   });
+}
+
+async function upsertSetting(key: string, value: string) {
+  const { data: existing } = await supabase.from("settings").select("id").eq("key", key).maybeSingle();
+  if (existing) {
+    const { error } = await supabase.from("settings").update({ value, updated_at: new Date().toISOString() }).eq("key", key);
+    if (error) throw error;
+  } else {
+    const { error } = await supabase.from("settings").insert({ key, value });
+    if (error) throw error;
+  }
 }
 
 // ── Rich Text Editor ───────────────────────────────────────────────────────
@@ -48,16 +68,7 @@ function RichTextEditor({
   }, [savedValue]);
 
   const saveMutation = useMutation({
-    mutationFn: async (value: string) => {
-      const { data: existing } = await supabase.from("settings").select("id").eq("key", settingKey).maybeSingle();
-      if (existing) {
-        const { error } = await supabase.from("settings").update({ value, updated_at: new Date().toISOString() }).eq("key", settingKey);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("settings").insert({ key: settingKey, value });
-        if (error) throw error;
-      }
-    },
+    mutationFn: (value: string) => upsertSetting(settingKey, value),
     onSuccess: () => { toast.success(`${label} saved`); setIsDirty(false); qc.invalidateQueries({ queryKey: ["setting", settingKey] }); },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -150,16 +161,7 @@ function BankAccountsPanel() {
   }, [savedRaw]);
 
   const saveMutation = useMutation({
-    mutationFn: async (value: string) => {
-      const { data: existing } = await supabase.from("settings").select("id").eq("key", "bank_accounts").maybeSingle();
-      if (existing) {
-        const { error } = await supabase.from("settings").update({ value, updated_at: new Date().toISOString() }).eq("key", "bank_accounts");
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("settings").insert({ key: "bank_accounts", value });
-        if (error) throw error;
-      }
-    },
+    mutationFn: (value: string) => upsertSetting("bank_accounts", value),
     onSuccess: () => {
       toast.success("Bank accounts saved");
       setIsDirty(false);
@@ -171,24 +173,15 @@ function BankAccountsPanel() {
 
   function addAccount() {
     const updated = [...accounts, { bankName: "", accountName: "", accountNumber: "" }];
-    setAccounts(updated);
-    setIsDirty(true);
+    setAccounts(updated); setIsDirty(true);
   }
-
   function removeAccount(i: number) {
     const updated = accounts.filter((_, idx) => idx !== i);
-    setAccounts(updated);
-    setIsDirty(true);
+    setAccounts(updated); setIsDirty(true);
   }
-
   function updateAccount(i: number, field: keyof BankAccount, value: string) {
     const updated = accounts.map((a, idx) => idx === i ? { ...a, [field]: value } : a);
-    setAccounts(updated);
-    setIsDirty(true);
-  }
-
-  function handleSave() {
-    saveMutation.mutate(JSON.stringify(accounts));
+    setAccounts(updated); setIsDirty(true);
   }
 
   return (
@@ -199,8 +192,7 @@ function BankAccountsPanel() {
         {isDirty && <span className="ml-2 text-xs text-orange-500 font-medium">• Unsaved</span>}
       </div>
       <p className="text-sm text-foreground/50 mb-5">
-        Add your bank details here — customers will see these at checkout when "Bank Transfer" is selected.
-        Add multiple accounts as fallback.
+        Add your bank details — visible to customers at checkout when "Bank Transfer" is selected.
       </p>
 
       <div className="space-y-3 mb-4">
@@ -214,42 +206,22 @@ function BankAccountsPanel() {
           <div key={i} className="bg-surface-2 rounded-xl p-4 space-y-3 relative">
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs font-medium text-foreground/40 uppercase tracking-wider">Account {i + 1}</span>
-              <button
-                type="button"
-                onClick={() => removeAccount(i)}
-                className="text-red-400 hover:text-red-500 p-1 hover:bg-red-50 rounded-lg transition-colors"
-              >
+              <button type="button" onClick={() => removeAccount(i)} className="text-red-400 hover:text-red-500 p-1 hover:bg-red-50 rounded-lg transition-colors">
                 <Trash2 size={14} />
               </button>
             </div>
             <div>
               <label className="block text-xs text-foreground/50 mb-1">Bank Name *</label>
-              <input
-                value={acc.bankName}
-                onChange={(e) => updateAccount(i, "bankName", e.target.value)}
-                placeholder="e.g. First Bank, GTBank, UBA"
-                className="input-field py-2 text-sm"
-              />
+              <input value={acc.bankName} onChange={(e) => updateAccount(i, "bankName", e.target.value)} placeholder="e.g. First Bank, GTBank, UBA" className="input-field py-2 text-sm" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs text-foreground/50 mb-1">Account Number *</label>
-                <input
-                  value={acc.accountNumber}
-                  onChange={(e) => updateAccount(i, "accountNumber", e.target.value)}
-                  placeholder="0123456789"
-                  maxLength={10}
-                  className="input-field py-2 text-sm font-mono tracking-widest"
-                />
+                <input value={acc.accountNumber} onChange={(e) => updateAccount(i, "accountNumber", e.target.value)} placeholder="0123456789" maxLength={10} className="input-field py-2 text-sm font-mono tracking-widest" />
               </div>
               <div>
                 <label className="block text-xs text-foreground/50 mb-1">Account Name *</label>
-                <input
-                  value={acc.accountName}
-                  onChange={(e) => updateAccount(i, "accountName", e.target.value)}
-                  placeholder="MARIAN CHUKWUEMEKA"
-                  className="input-field py-2 text-sm"
-                />
+                <input value={acc.accountName} onChange={(e) => updateAccount(i, "accountName", e.target.value)} placeholder="MARIAN CHUKWUEMEKA" className="input-field py-2 text-sm" />
               </div>
             </div>
           </div>
@@ -262,7 +234,7 @@ function BankAccountsPanel() {
         </button>
         <button
           type="button"
-          onClick={handleSave}
+          onClick={() => saveMutation.mutate(JSON.stringify(accounts))}
           disabled={saveMutation.isPending || !isDirty}
           className={`btn-primary text-sm px-5 ${!isDirty ? "opacity-50" : ""}`}
         >
@@ -274,9 +246,92 @@ function BankAccountsPanel() {
       {accounts.length > 0 && !isDirty && (
         <div className="mt-4 flex items-center gap-2 text-xs text-green-600 bg-green-50 rounded-xl px-3 py-2">
           <CheckCircle2 size={14} />
-          {accounts.length} bank account{accounts.length > 1 ? "s" : ""} active — visible to customers at checkout
+          {accounts.length} account{accounts.length > 1 ? "s" : ""} active — visible to customers at checkout
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Social Links Panel ─────────────────────────────────────────────────────
+function SocialLinksPanel() {
+  const qc = useQueryClient();
+  const { data: savedRaw = "" } = useSettingValue("social_links");
+  const [links, setLinks] = useState<SocialLinks>({
+    instagram: "", tiktok: "", whatsapp: "", x: "", shopify: "",
+  });
+  const [isDirty, setIsDirty] = useState(false);
+
+  useEffect(() => {
+    if (savedRaw) {
+      try { setLinks({ instagram: "", tiktok: "", whatsapp: "", x: "", shopify: "", ...JSON.parse(savedRaw) }); setIsDirty(false); }
+      catch { /* ignore */ }
+    }
+  }, [savedRaw]);
+
+  const saveMutation = useMutation({
+    mutationFn: (value: string) => upsertSetting("social_links", value),
+    onSuccess: () => {
+      toast.success("Social links saved");
+      setIsDirty(false);
+      qc.invalidateQueries({ queryKey: ["setting", "social_links"] });
+      qc.invalidateQueries({ queryKey: ["social-links"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  function update(field: keyof SocialLinks, value: string) {
+    setLinks((prev) => ({ ...prev, [field]: value }));
+    setIsDirty(true);
+  }
+
+  const fields: { key: keyof SocialLinks; label: string; placeholder: string; color: string }[] = [
+    { key: "instagram", label: "Instagram", placeholder: "https://instagram.com/yourstore", color: "text-pink-500" },
+    { key: "tiktok", label: "TikTok", placeholder: "https://tiktok.com/@yourstore", color: "text-gray-900" },
+    { key: "whatsapp", label: "WhatsApp", placeholder: "https://wa.me/2349132996389", color: "text-green-600" },
+    { key: "x", label: "X (Twitter)", placeholder: "https://x.com/yourstore", color: "text-gray-900" },
+    { key: "shopify", label: "Shopify Store", placeholder: "https://yourstore.myshopify.com", color: "text-green-700" },
+  ];
+
+  return (
+    <div className="glass-card rounded-2xl p-6">
+      <div className="flex items-center gap-2 mb-2">
+        <Share2 size={18} className="text-brand-blue-deep" />
+        <h2 className="font-heading text-xl font-medium">Social Media Links</h2>
+        {isDirty && <span className="ml-2 text-xs text-orange-500 font-medium">• Unsaved</span>}
+      </div>
+      <p className="text-sm text-foreground/50 mb-5">
+        These links appear in the footer of your store. Leave blank to hide the icon.
+      </p>
+
+      <div className="space-y-4">
+        {fields.map(({ key, label, placeholder, color }) => (
+          <div key={key}>
+            <label className={`block text-sm font-medium mb-1.5 ${color}`}>{label}</label>
+            <div className="relative">
+              <LinkIcon size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-foreground/30" />
+              <input
+                type="url"
+                value={links[key]}
+                onChange={(e) => update(key, e.target.value)}
+                placeholder={placeholder}
+                className="input-field pl-9 text-sm"
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-5 flex justify-end">
+        <button
+          onClick={() => saveMutation.mutate(JSON.stringify(links))}
+          disabled={saveMutation.isPending || !isDirty}
+          className={`btn-primary text-sm px-6 ${!isDirty ? "opacity-50" : ""}`}
+        >
+          {saveMutation.isPending ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+          {saveMutation.isPending ? "Saving..." : "Save Social Links"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -297,16 +352,14 @@ export default function AdminSettings() {
       const { error } = await supabase.auth.updateUser({ password: newPw });
       if (error) throw error;
     },
-    onSuccess: () => {
-      toast.success("Password updated successfully");
-      setNewPw(""); setConfirmPw("");
-    },
+    onSuccess: () => { toast.success("Password updated successfully"); setNewPw(""); setConfirmPw(""); },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const tabs: { id: SettingsTab; label: string; icon: React.ElementType }[] = [
     { id: "account", label: "Account", icon: Store },
     { id: "payment", label: "Payment", icon: CreditCard },
+    { id: "socials", label: "Socials", icon: Share2 },
     { id: "terms", label: "Terms", icon: FileText },
     { id: "privacy", label: "Privacy", icon: Shield },
   ];
@@ -315,16 +368,16 @@ export default function AdminSettings() {
     <div className="animate-fade-in max-w-2xl">
       <div className="mb-6">
         <h1 className="font-heading text-3xl font-light">Settings</h1>
-        <p className="text-foreground/50 text-sm mt-1">Manage your account, payment methods, and store content.</p>
+        <p className="text-foreground/50 text-sm mt-1">Manage your account, payment methods, socials, and store content.</p>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 p-1 bg-surface-2 rounded-xl mb-6 border border-border">
+      <div className="flex gap-1 p-1 bg-surface-2 rounded-xl mb-6 border border-border overflow-x-auto">
         {tabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setActiveTab(id)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-lg text-xs sm:text-sm font-medium transition-all duration-200 ${
+            className={`flex-shrink-0 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-lg text-xs sm:text-sm font-medium transition-all duration-200 ${
               activeTab === id ? "bg-white text-foreground shadow-sm" : "text-foreground/50 hover:text-foreground"
             }`}
           >
@@ -365,8 +418,8 @@ export default function AdminSettings() {
             <div className="bg-brand-blue/10 border border-brand-blue/20 rounded-xl p-4 text-sm">
               <p className="font-medium text-brand-blue-deep mb-1.5">WhatsApp Notifications Active</p>
               <p className="text-foreground/60 leading-relaxed">
-                New orders automatically sent to WhatsApp <strong>+{ADMIN_WHATSAPP}</strong>. You'll receive
-                customer name, phone, address, all items and total — reply directly for delivery coordination.
+                New orders automatically sent to WhatsApp <strong>+{ADMIN_WHATSAPP}</strong>. Realtime
+                alerts also appear on the dashboard when the admin panel is open.
               </p>
             </div>
           </div>
@@ -389,8 +442,7 @@ export default function AdminSettings() {
                     placeholder="Minimum 8 characters"
                     minLength={8}
                   />
-                  <button type="button" onClick={() => setShowPw(!showPw)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground p-1">
+                  <button type="button" onClick={() => setShowPw(!showPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground p-1">
                     {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
@@ -405,8 +457,7 @@ export default function AdminSettings() {
                     className="input-field pr-10"
                     placeholder="Repeat new password"
                   />
-                  <button type="button" onClick={() => setShowConfirmPw(!showConfirmPw)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground p-1">
+                  <button type="button" onClick={() => setShowConfirmPw(!showConfirmPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground p-1">
                     {showConfirmPw ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
@@ -419,11 +470,7 @@ export default function AdminSettings() {
                   </p>
                 )}
               </div>
-              <button
-                type="submit"
-                disabled={changePassword.isPending || !newPw || !confirmPw || newPw !== confirmPw}
-                className="btn-primary disabled:opacity-50"
-              >
+              <button type="submit" disabled={changePassword.isPending || !newPw || !confirmPw || newPw !== confirmPw} className="btn-primary disabled:opacity-50">
                 {changePassword.isPending ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
                 Update Password
               </button>
@@ -439,13 +486,20 @@ export default function AdminSettings() {
         </div>
       )}
 
+      {/* ── Socials Tab ── */}
+      {activeTab === "socials" && (
+        <div className="animate-fade-in">
+          <SocialLinksPanel />
+        </div>
+      )}
+
       {/* ── Terms Tab ── */}
       {activeTab === "terms" && (
         <div className="animate-fade-in">
           <RichTextEditor
             label="Terms & Conditions"
             settingKey="terms"
-            description="Define the terms of service for your store. Customers can view this on the Terms page."
+            description="Define the terms of service for your store."
             icon={FileText}
           />
         </div>
@@ -457,7 +511,7 @@ export default function AdminSettings() {
           <RichTextEditor
             label="Privacy Policy"
             settingKey="privacy"
-            description="Explain how you collect, use and protect customer data."
+            description="Explain how you collect, use, and protect customer data."
             icon={Shield}
           />
         </div>

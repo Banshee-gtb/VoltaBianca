@@ -1,57 +1,41 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { ArrowRight, Sparkles, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import type { Product, Category } from "@/types";
 import ProductCard from "@/components/features/ProductCard";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 
+// Verified high-quality Unsplash images for the hero slideshow
 const HERO_SLIDES = [
   {
-    url: "https://images.unsplash.com/photo-1541643600914-78b084683702?w=1400&fit=crop&q=85&auto=format",
+    url: "https://images.unsplash.com/photo-1541643600914-78b084683702?w=1600&h=1000&fit=crop&q=90",
     label: "Luxury Fragrances",
   },
   {
-    url: "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=1400&fit=crop&q=85&auto=format",
+    url: "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=1600&h=1000&fit=crop&q=90",
     label: "Premium Fashion",
   },
   {
-    url: "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=1400&fit=crop&q=85&auto=format",
+    url: "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=1600&h=1000&fit=crop&q=90",
     label: "Human Hair & Beauty",
   },
   {
-    url: "https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=1400&fit=crop&q=85&auto=format",
+    url: "https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=1600&h=1000&fit=crop&q=90",
     label: "Designer Clothing",
   },
   {
-    url: "https://images.unsplash.com/photo-1571781926291-c477ebfd024b?w=1400&fit=crop&q=85&auto=format",
+    url: "https://images.unsplash.com/photo-1596704017248-1fef7e849cc5?w=1600&h=1000&fit=crop&q=90",
     label: "Beauty & Skincare",
   },
 ];
 
 function HeroSlideshow() {
   const [active, setActive] = useState(0);
-  const [transitioning, setTransitioning] = useState(false);
 
-  function goTo(index: number) {
-    if (transitioning) return;
-    setTransitioning(true);
-    setTimeout(() => {
-      setActive(index);
-      setTransitioning(false);
-    }, 300);
-  }
-
-  function prev() {
-    goTo(active === 0 ? HERO_SLIDES.length - 1 : active - 1);
-  }
-
-  function next() {
-    goTo(active === HERO_SLIDES.length - 1 ? 0 : active + 1);
-  }
-
+  // Auto-advance every 5 seconds
   useEffect(() => {
     const timer = setInterval(() => {
       setActive((prev) => (prev === HERO_SLIDES.length - 1 ? 0 : prev + 1));
@@ -61,12 +45,12 @@ function HeroSlideshow() {
 
   return (
     <div className="absolute inset-0 overflow-hidden">
+      {/* Slides — fade in/out with pure opacity transition */}
       {HERO_SLIDES.map((slide, i) => (
         <div
           key={slide.url}
-          className={`absolute inset-0 transition-opacity duration-700 ease-in-out ${
-            i === active ? "opacity-100" : "opacity-0"
-          }`}
+          className="absolute inset-0 transition-opacity duration-1000 ease-in-out"
+          style={{ opacity: i === active ? 1 : 0 }}
         >
           <img
             src={slide.url}
@@ -77,37 +61,26 @@ function HeroSlideshow() {
         </div>
       ))}
 
-      {/* Blur + gradient overlay */}
-      <div className="absolute inset-0 bg-gradient-to-r from-surface-1/95 via-surface-1/70 to-surface-1/40 backdrop-blur-[2px]" />
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-surface-1/60" />
+      {/* Layered blur + gradient overlay */}
+      <div className="absolute inset-0 bg-gradient-to-r from-surface-1/95 via-surface-1/65 to-surface-1/25 backdrop-blur-[1px]" />
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-surface-1/70" />
 
-      {/* Slide controls */}
-      <button
-        onClick={prev}
-        className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/30 backdrop-blur-sm flex items-center justify-center text-foreground hover:bg-white/60 transition-all duration-200 z-10"
-      >
-        <ChevronLeft size={20} />
-      </button>
-      <button
-        onClick={next}
-        className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/30 backdrop-blur-sm flex items-center justify-center text-foreground hover:bg-white/60 transition-all duration-200 z-10"
-      >
-        <ChevronRight size={20} />
-      </button>
-
-      {/* Slide label + dots */}
+      {/* Dot navigation only — no arrows */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 z-10">
         <span className="text-xs text-foreground/60 tracking-widest uppercase bg-white/40 backdrop-blur-sm px-3 py-1 rounded-full border border-white/30">
           {HERO_SLIDES[active].label}
         </span>
-        <div className="flex gap-1.5">
+        <div className="flex gap-2">
           {HERO_SLIDES.map((_, i) => (
             <button
               key={i}
-              onClick={() => goTo(i)}
-              className={`rounded-full transition-all duration-300 ${
-                i === active ? "w-6 h-2 bg-brand-blue-deep" : "w-2 h-2 bg-foreground/30 hover:bg-foreground/50"
+              onClick={() => setActive(i)}
+              className={`rounded-full transition-all duration-400 ${
+                i === active
+                  ? "w-7 h-2.5 bg-brand-blue-deep"
+                  : "w-2.5 h-2.5 bg-white/50 hover:bg-white/80"
               }`}
+              aria-label={`Go to slide ${i + 1}`}
             />
           ))}
         </div>

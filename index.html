@@ -3,6 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#6B9DC2" />
+    <link rel="apple-touch-icon" href="/mh-logo.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="MiMis Admin" />
     <title>MiMis Fashion Hub — Elegance Delivered</title>
     <meta name="description" content="Shop the finest fashion, beauty, and lifestyle products at MiMis Fashion Hub. Curated with elegance, delivered with care." />
     <meta name="keywords" content="MiMis Fashion Hub, fashion, beauty, skincare, lifestyle, online store, Nigeria" />
@@ -37,6 +43,13 @@
     </script>
   </head>
   <body>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(() => {});
+        });
+      }
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

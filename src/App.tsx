@@ -17,15 +17,16 @@ import AdminOrders from "@/pages/admin/AdminOrders";
 import AdminCategories from "@/pages/admin/AdminCategories";
 import AdminSettings from "@/pages/admin/AdminSettings";
 import AdminLayout from "@/components/layout/AdminLayout";
+import WhatsAppBubble from "@/components/features/WhatsAppBubble";
 
 function AdminGuard({ children }: { children: React.ReactNode }) {
   const { isAdmin, loading } = useAuth();
 
-  // Always show spinner while auth is resolving — prevents premature redirect
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-surface-1">
       <div className="flex flex-col items-center gap-4">
-        <div className="w-10 h-10 border-2 border-brand-blue-deep border-t-transparent rounded-full animate-spin" />
+        <img src="/mh-logo.png" alt="MiMis Fashion Hub" className="w-16 h-16 object-contain opacity-60 animate-pulse" />
+        <div className="w-8 h-8 border-2 border-brand-blue-deep border-t-transparent rounded-full animate-spin" />
         <p className="text-sm text-foreground/40">Loading admin panel...</p>
       </div>
     </div>
@@ -41,14 +42,14 @@ export default function App() {
       <CartProvider>
         <BrowserRouter>
           <Routes>
-            {/* Public */}
-            <Route path="/" element={<Home />} />
-            <Route path="/products" element={<Products />} />
-            <Route path="/products/:id" element={<ProductDetail />} />
-            <Route path="/checkout" element={<Checkout />} />
-            <Route path="/order-confirmation" element={<OrderConfirmation />} />
+            {/* Public routes */}
+            <Route path="/" element={<><Home /><WhatsAppBubble /></>} />
+            <Route path="/products" element={<><Products /><WhatsAppBubble /></>} />
+            <Route path="/products/:id" element={<><ProductDetail /><WhatsAppBubble /></>} />
+            <Route path="/checkout" element={<><Checkout /><WhatsAppBubble /></>} />
+            <Route path="/order-confirmation" element={<><OrderConfirmation /><WhatsAppBubble /></>} />
 
-            {/* Admin */}
+            {/* Admin routes */}
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route
               path="/admin"
