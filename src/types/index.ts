@@ -26,6 +26,8 @@ export interface Product {
   category_id: string | null;
   tags: string[];
   shipping_fee: number | null;
+  is_featured: boolean;
+  featured_at: string | null;
   created_at: string;
   categories?: Category;
   product_variants?: ProductVariant[];

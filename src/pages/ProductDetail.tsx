@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -123,6 +123,8 @@ export default function ProductDetail() {
   const [added, setAdded] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
 
   const { data: product, isLoading, error } = useQuery({
     queryKey: ["product", id],
@@ -236,6 +238,24 @@ export default function ProductDetail() {
     setActiveImageIndex((i) => (i === allImages.length - 1 ? 0 : i + 1));
   }
 
+  function handleTouchStart(e: React.TouchEvent) {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  }
+
+  function handleTouchEnd(e: React.TouchEvent) {
+    if (touchStartX.current === null || touchStartY.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    const dy = e.changedTouches[0].clientY - touchStartY.current;
+    // Only swipe if horizontal movement is dominant and at least 50px
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50 && allImages.length > 1) {
+      if (dx < 0) nextImage();
+      else prevImage();
+    }
+    touchStartX.current = null;
+    touchStartY.current = null;
+  }
+
   const canAddToCart = !isOutOfStock && (!product.has_variants || !!selectedVariant);
 
   return (
@@ -254,7 +274,11 @@ export default function ProductDetail() {
           {/* ── Image Gallery ── */}
           <div className="space-y-3">
             {/* Main image */}
-            <div className="relative aspect-[4/5] bg-surface-2 rounded-3xl overflow-hidden group cursor-zoom-in">
+            <div
+              className="relative aspect-[4/5] bg-surface-2 rounded-3xl overflow-hidden group cursor-zoom-in"
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
+            >
               {allImages.length > 0 ? (
                 <img
                   key={activeImageIndex}
@@ -262,6 +286,7 @@ export default function ProductDetail() {
                   alt={`${product.title} ${activeImageIndex + 1}`}
                   className="w-full h-full object-cover transition-opacity duration-300"
                   onClick={() => setLightboxOpen(true)}
+                  draggable={false}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">

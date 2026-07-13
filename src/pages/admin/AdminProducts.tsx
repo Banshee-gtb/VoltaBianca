@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Plus, Search, Edit2, Trash2, Package, ToggleLeft, ToggleRight } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, Package, ToggleLeft, ToggleRight, Star } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { formatPrice } from "@/lib/utils";
 import type { Product } from "@/types";
+
+const MAX_FEATURED = 6;
 
 export default function AdminProducts() {
   const qc = useQueryClient();
@@ -31,6 +33,50 @@ export default function AdminProducts() {
     onError: () => toast.error("Failed to update product"),
   });
 
+  const toggleFeatured = useMutation({
+    mutationFn: async ({ id, is_featured }: { id: string; is_featured: boolean }) => {
+      if (is_featured) {
+        // Enabling featured — check if we're at the limit
+        const currentFeatured = products
+          .filter((p) => p.is_featured && p.id !== id)
+          .sort((a, b) => {
+            const aTime = a.featured_at ? new Date(a.featured_at).getTime() : 0;
+            const bTime = b.featured_at ? new Date(b.featured_at).getTime() : 0;
+            return aTime - bTime; // oldest first
+          });
+
+        if (currentFeatured.length >= MAX_FEATURED) {
+          // Unfeature the oldest one
+          const oldest = currentFeatured[0];
+          await supabase
+            .from("products")
+            .update({ is_featured: false, featured_at: null })
+            .eq("id", oldest.id);
+        }
+
+        // Now feature this product
+        const { error } = await supabase
+          .from("products")
+          .update({ is_featured: true, featured_at: new Date().toISOString() })
+          .eq("id", id);
+        if (error) throw error;
+      } else {
+        // Disabling featured
+        const { error } = await supabase
+          .from("products")
+          .update({ is_featured: false, featured_at: null })
+          .eq("id", id);
+        if (error) throw error;
+      }
+    },
+    onSuccess: (_, vars) => {
+      toast.success(vars.is_featured ? "Added to New Arrivals ✦" : "Removed from New Arrivals");
+      qc.invalidateQueries({ queryKey: ["admin-products"] });
+      qc.invalidateQueries({ queryKey: ["featured-products"] });
+    },
+    onError: () => toast.error("Failed to update featured status"),
+  });
+
   const deleteProduct = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from("products").delete().eq("id", id);
@@ -47,16 +93,29 @@ export default function AdminProducts() {
     p.title.toLowerCase().includes(search.toLowerCase())
   );
 
+  const featuredCount = products.filter((p) => p.is_featured).length;
+
   return (
     <div className="animate-fade-in">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="font-heading text-3xl font-light">Products</h1>
-          <p className="text-foreground/50 text-sm mt-1">{products.length} total products</p>
+          <p className="text-foreground/50 text-sm mt-1">
+            {products.length} total · <span className="text-yellow-600 font-medium">{featuredCount}/{MAX_FEATURED} featured</span>
+          </p>
         </div>
         <Link to="/admin/products/new" className="btn-primary">
           <Plus size={18} /> Add Product
         </Link>
+      </div>
+
+      {/* Featured hint */}
+      <div className="glass-card rounded-xl p-3 mb-5 flex items-start gap-3 text-sm bg-yellow-50/50 border border-yellow-200/60">
+        <Star size={16} className="text-yellow-500 flex-shrink-0 mt-0.5" fill="currentColor" />
+        <p className="text-foreground/60">
+          Click the <span className="font-medium text-yellow-600">★ star</span> on any product to feature it as a <strong>New Arrival</strong> on the homepage.
+          Max {MAX_FEATURED} featured — oldest will be replaced automatically.
+        </p>
       </div>
 
       {/* Search */}
@@ -94,6 +153,7 @@ export default function AdminProducts() {
                   <th className="text-left py-3 px-4 text-foreground/50 font-medium">Price</th>
                   <th className="text-left py-3 px-4 text-foreground/50 font-medium hidden sm:table-cell">Variants</th>
                   <th className="text-left py-3 px-4 text-foreground/50 font-medium">Status</th>
+                  <th className="text-center py-3 px-4 text-foreground/50 font-medium">Featured</th>
                   <th className="text-right py-3 px-4 text-foreground/50 font-medium">Actions</th>
                 </tr>
               </thead>
@@ -104,7 +164,7 @@ export default function AdminProducts() {
                     : product.base_price;
 
                   return (
-                    <tr key={product.id} className="border-b border-border/40 hover:bg-surface-1/60 transition-colors">
+                    <tr key={product.id} className={`border-b border-border/40 hover:bg-surface-1/60 transition-colors ${product.is_featured ? "bg-yellow-50/30" : ""}`}>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-lg overflow-hidden bg-surface-2 flex-shrink-0">
@@ -137,6 +197,19 @@ export default function AdminProducts() {
                         >
                           {product.is_active ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
                           <span className="hidden sm:inline">{product.is_active ? "Active" : "Hidden"}</span>
+                        </button>
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <button
+                          onClick={() => toggleFeatured.mutate({ id: product.id, is_featured: !product.is_featured })}
+                          title={product.is_featured ? "Remove from New Arrivals" : "Add to New Arrivals"}
+                          className={`w-9 h-9 rounded-full flex items-center justify-center mx-auto transition-all duration-200 ${
+                            product.is_featured
+                              ? "bg-yellow-100 text-yellow-500 hover:bg-yellow-200"
+                              : "bg-surface-2 text-foreground/25 hover:text-yellow-400 hover:bg-yellow-50"
+                          }`}
+                        >
+                          <Star size={16} fill={product.is_featured ? "currentColor" : "none"} />
                         </button>
                       </td>
                       <td className="py-3 px-4">

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { ArrowRight, Sparkles } from "lucide-react";
 import { supabase } from "@/lib/supabase";
@@ -8,7 +8,7 @@ import ProductCard from "@/components/features/ProductCard";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 
-// Verified high-quality Unsplash images for the hero slideshow
+// Verified Unsplash images — no arrows, dots only
 const HERO_SLIDES = [
   {
     url: "https://images.unsplash.com/photo-1541643600914-78b084683702?w=1600&h=1000&fit=crop&q=90",
@@ -35,7 +35,6 @@ const HERO_SLIDES = [
 function HeroSlideshow() {
   const [active, setActive] = useState(0);
 
-  // Auto-advance every 5 seconds
   useEffect(() => {
     const timer = setInterval(() => {
       setActive((prev) => (prev === HERO_SLIDES.length - 1 ? 0 : prev + 1));
@@ -45,7 +44,6 @@ function HeroSlideshow() {
 
   return (
     <div className="absolute inset-0 overflow-hidden">
-      {/* Slides — fade in/out with pure opacity transition */}
       {HERO_SLIDES.map((slide, i) => (
         <div
           key={slide.url}
@@ -61,11 +59,11 @@ function HeroSlideshow() {
         </div>
       ))}
 
-      {/* Layered blur + gradient overlay */}
+      {/* Overlay */}
       <div className="absolute inset-0 bg-gradient-to-r from-surface-1/95 via-surface-1/65 to-surface-1/25 backdrop-blur-[1px]" />
       <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-surface-1/70" />
 
-      {/* Dot navigation only — no arrows */}
+      {/* Dots only — no arrows */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 z-10">
         <span className="text-xs text-foreground/60 tracking-widest uppercase bg-white/40 backdrop-blur-sm px-3 py-1 rounded-full border border-white/30">
           {HERO_SLIDES[active].label}
@@ -75,12 +73,12 @@ function HeroSlideshow() {
             <button
               key={i}
               onClick={() => setActive(i)}
-              className={`rounded-full transition-all duration-400 ${
+              className={`rounded-full transition-all duration-300 ${
                 i === active
                   ? "w-7 h-2.5 bg-brand-blue-deep"
                   : "w-2.5 h-2.5 bg-white/50 hover:bg-white/80"
               }`}
-              aria-label={`Go to slide ${i + 1}`}
+              aria-label={`Slide ${i + 1}`}
             />
           ))}
         </div>
@@ -90,15 +88,17 @@ function HeroSlideshow() {
 }
 
 export default function Home() {
-  const { data: products = [] } = useQuery({
+  // Only show admin-featured products (max 6, sorted by featured_at desc)
+  const { data: featuredProducts = [] } = useQuery({
     queryKey: ["featured-products"],
     queryFn: async () => {
       const { data } = await supabase
         .from("products")
         .select("*, categories(*), product_variants(*)")
         .eq("is_active", true)
-        .order("created_at", { ascending: false })
-        .limit(8);
+        .eq("is_featured", true)
+        .order("featured_at", { ascending: false })
+        .limit(6);
       return (data ?? []) as Product[];
     },
   });
@@ -115,11 +115,10 @@ export default function Home() {
     <div className="min-h-screen">
       <Navbar />
 
-      {/* ── Hero with Image Slideshow ── */}
+      {/* ── Hero ── */}
       <section className="relative min-h-[92vh] flex items-center overflow-hidden">
         <HeroSlideshow />
 
-        {/* Content */}
         <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 w-full py-24">
           <div className="max-w-2xl">
             <div className="flex items-center gap-2 mb-6">
@@ -155,7 +154,6 @@ export default function Home() {
               </a>
             </div>
 
-            {/* Trust pills */}
             <div className="flex flex-wrap gap-3 mt-8">
               {["Free Consultation", "Fast Delivery", "Quality Guaranteed"].map((t) => (
                 <span
@@ -189,10 +187,13 @@ export default function Home() {
         </section>
       )}
 
-      {/* ── Featured Products ── */}
+      {/* ── New Arrivals (admin-curated, max 6) ── */}
       <section className="max-w-6xl mx-auto px-4 sm:px-6 pb-16">
         <div className="flex items-center justify-between mb-8">
-          <h2 className="section-title">New Arrivals</h2>
+          <div>
+            <h2 className="section-title">New Arrivals</h2>
+            <p className="text-sm text-foreground/40 mt-1">Handpicked by MiMis Fashion Hub</p>
+          </div>
           <Link
             to="/products"
             className="text-sm text-brand-blue-deep hover:text-brand-purple-deep transition-colors flex items-center gap-1"
@@ -201,15 +202,15 @@ export default function Home() {
           </Link>
         </div>
 
-        {products.length === 0 ? (
+        {featuredProducts.length === 0 ? (
           <div className="text-center py-20 text-foreground/40">
             <p className="font-heading text-2xl font-light mb-2">Coming soon</p>
-            <p className="text-sm">Products are being added to the store.</p>
+            <p className="text-sm">New arrivals are being handpicked for you.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
-            {products.map((p) => (
-              <ProductCard key={p.id} product={p} />
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
+            {featuredProducts.map((p) => (
+              <ProductCard key={p.id} product={p} featured />
             ))}
           </div>
         )}
